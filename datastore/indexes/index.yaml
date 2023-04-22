@@ -1,0 +1,12 @@
+indexes:
+  - kind: Message
+    properties:
+      - name: from
+      - name: timestamp
+        direction: desc
+  - kind: Message
+    properties:
+      - name: from
+      - name: actor
+      - name: timestamp
+        direction: desc
