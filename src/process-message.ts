@@ -59,7 +59,7 @@ async function defineContactId(contactId: string, contacts: Array<Contact>) {
 
   const contact = contacts.find((contact) => contact.wa_id === contactId);
 
-  const contactName = contact ? contact.profile.name : "Contacto Anonimo";
+  const contactName = contact ? contact.profile.name : "Anonimo";
   const contactEntity = {
     key: contactKey,
     data: {

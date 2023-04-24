@@ -25,8 +25,8 @@ const envSchema = z.object({
   OPENAI_MODEL: z.literal("gpt-3.5-turbo"),
   OPENAI_MAX_TOKENS: stringNumberSchema,
   OPENAI_MAX_RESPONSE_TOKENS: stringNumberSchema,
+  OPENAI_MESSAGE_TOKENS_PADDING: stringNumberSchema,
   OPENAI_INITIAL_PROMPT: trimmedStringSchema,
-  OPENAI_DEFAULT_PROMPT: trimmedStringSchema,
   OPENAI_API_KEY: trimmedStringSchema,
 });
 

@@ -5,8 +5,11 @@ import bodyParser from "body-parser";
 import * as console from "console";
 import { entity } from "@google-cloud/datastore/build/src/entity";
 import { encoding_for_model } from "@dqbd/tiktoken";
-import { Configuration, OpenAIApi } from "openai";
 import { environment } from "./environment";
+
+type Contact = {
+  name: string;
+};
 
 type StoredMessage = {
   messageId: string;
@@ -16,25 +19,23 @@ type StoredMessage = {
   actor: "user" | "assistant";
 };
 
+type OpenAIResponse = {
+  choices: Array<{
+    message: {
+      role: "assistant";
+      content: string;
+    };
+    finish_reason: "stop" | "length";
+    index: number;
+  }>;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+};
+
 const datastore = new Datastore();
-
-const configuration = new Configuration({
-  apiKey: environment().OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(configuration);
-
-async function isFirstMessage(contactKey: entity.Key) {
-  const [results] = await datastore.runQuery(
-    datastore
-      .createQuery("Message")
-      .filter("from", "=", contactKey)
-      .filter("actor", "=", "ai")
-      .order("timestamp", { descending: true })
-      .limit(1)
-  );
-
-  return !results[0];
-}
 
 async function retrieveLatestMessage(contactKey: entity.Key) {
   const queryResponse = await datastore.runQuery(
@@ -50,36 +51,88 @@ async function retrieveLatestMessage(contactKey: entity.Key) {
   return results[0];
 }
 
-function truncateText(text: string) {
+function getTokensCount(message: string) {
+  const encoding = encoding_for_model(environment().OPENAI_MODEL);
+  const count = encoding.encode(message).length;
+  encoding.free();
+  return count + environment().OPENAI_MESSAGE_TOKENS_PADDING;
+}
+
+function truncateText(text: string, maxTokens: number) {
   const encoding = encoding_for_model(environment().OPENAI_MODEL);
   const tokens = encoding.encode(text);
-  const maxPromptTokens =
-    environment().OPENAI_MAX_TOKENS - environment().OPENAI_MAX_RESPONSE_TOKENS;
 
-  if (tokens.length > maxPromptTokens) {
-    let currentTokens = tokens.slice(tokens.length - maxPromptTokens);
-    let currentText = encoding.decode(currentTokens);
-    encoding.free();
-    return new TextDecoder().decode(currentText);
-  }
+  const tokensCount =
+    tokens.length + environment().OPENAI_MESSAGE_TOKENS_PADDING;
 
-  return text;
+  let currentTokens = tokens.slice(maxTokens - tokensCount);
+  let currentText = encoding.decode(currentTokens);
+  encoding.free();
+  return new TextDecoder().decode(currentText);
 }
 
 function filterMessages(messages: Array<StoredMessage>) {
-  let remainingTokens =
-    environment().OPENAI_MAX_TOKENS - environment().OPENAI_MAX_RESPONSE_TOKENS;
+  console.log(JSON.stringify(messages));
+  const limitTokens =
+    environment().OPENAI_MAX_TOKENS -
+    environment().OPENAI_MAX_RESPONSE_TOKENS -
+    10; // Add some padding to avoid out of bound errors
+
+  let consumedTokens = getTokensCount(environment().OPENAI_INITIAL_PROMPT);
+
   const indexOutOfBound = messages.findIndex((message) => {
-    const encoding = encoding_for_model(environment().OPENAI_MODEL);
-    const tokens = encoding.encode(message.text);
-    remainingTokens -= tokens.length;
-    encoding.free();
-    return remainingTokens < 0;
+    const messageTokens = getTokensCount(message.text);
+
+    if (consumedTokens + messageTokens > limitTokens) {
+      return true;
+    }
+
+    consumedTokens += messageTokens;
+    return false;
   });
-  return messages.slice(0, indexOutOfBound - 1);
+
+  if (indexOutOfBound === -1) return messages;
+
+  const lastMessage = messages[indexOutOfBound];
+  lastMessage.text = truncateText(
+    lastMessage.text,
+    limitTokens - consumedTokens
+  );
+  return [...messages.slice(0, indexOutOfBound), lastMessage];
 }
 
-async function getMessagesHistory(contactKey: entity.Key) {
+function groupMessages(
+  messages: Array<StoredMessage>,
+  contact: Contact
+): Array<StoredMessage> {
+  if (messages.length < 2) return messages; // No need to group
+
+  const firstMessage = messages.shift() as StoredMessage; // We already know that the array is not empty
+
+  return messages.reduce(
+    (groupedMessages, message) => {
+      const lastGroupedMessage = groupedMessages[groupedMessages.length - 1];
+
+      // If the last message was sent by the same actor, group them
+      if (lastGroupedMessage.actor === message.actor) {
+        lastGroupedMessage.text = message.text + " " + lastGroupedMessage.text;
+        return groupedMessages;
+      }
+
+      lastGroupedMessage.text =
+        lastGroupedMessage.actor === "user"
+          ? `${contact.name}: ${lastGroupedMessage.text}`
+          : lastGroupedMessage.text;
+
+      // Otherwise, add a new non-grouped message to the array
+      groupedMessages.push(message);
+      return groupedMessages;
+    },
+    [firstMessage] as [StoredMessage] & Array<StoredMessage>
+  );
+}
+
+async function getMessagesHistory(contactKey: entity.Key, contact: Contact) {
   const messagesQueryResult = await datastore.runQuery(
     datastore
       .createQuery("Message")
@@ -89,27 +142,17 @@ async function getMessagesHistory(contactKey: entity.Key) {
   );
   const messages = messagesQueryResult[0] as Array<StoredMessage>;
 
-  const isFirst = await isFirstMessage(contactKey);
-
-  const chatHistory = filterMessages(messages)
+  const chatHistory = filterMessages(groupMessages(messages, contact))
     .reverse()
     .map((message) => ({ role: message.actor, content: message.text }));
 
-  return isFirst
-    ? [
-        {
-          role: "system" as const,
-          content: environment().OPENAI_INITIAL_PROMPT,
-        },
-        ...chatHistory,
-      ]
-    : [
-        {
-          role: "system" as const,
-          content: environment().OPENAI_DEFAULT_PROMPT,
-        },
-        ...chatHistory,
-      ];
+  return [
+    {
+      role: "system" as const,
+      content: environment().OPENAI_INITIAL_PROMPT,
+    },
+    ...chatHistory,
+  ];
 }
 
 function splitStringIntoChunks(text: string) {
@@ -199,20 +242,32 @@ async function handlePostRequest(req: Request, res: Response) {
 
   const contactKey = datastore.key(["Contact", contactId]);
   try {
+    const [existingContact] = (await datastore.get(contactKey)) as [Contact];
+
     const latestMessage = await retrieveLatestMessage(contactKey);
     if (latestMessage.messageId !== messageId) return;
 
-    const messages = await getMessagesHistory(contactKey);
+    const messages = await getMessagesHistory(contactKey, existingContact);
 
-    const completion = await openai.createChatCompletion({
-      model: environment().OPENAI_MODEL,
-      messages,
-      max_tokens: environment().OPENAI_MAX_RESPONSE_TOKENS,
-      temperature: 0.8,
-    });
+    const response = await axios.post<OpenAIResponse>(
+      `https://api.openai.com/v1/chat/completions`,
+      {
+        model: environment().OPENAI_MODEL,
+        max_tokens: environment().OPENAI_MAX_RESPONSE_TOKENS,
+        temperature: 0.8,
+        messages,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${environment().OPENAI_API_KEY}`,
+        },
+      }
+    );
+
+    console.log(response.data.usage);
 
     const chunks = splitStringIntoChunks(
-      completion.data.choices?.[0]?.message?.content as string
+      response.data.choices?.[0]?.message?.content as string
     );
     for await (const chunk of chunks) {
       const messageId = await sendWhatsappMessage(contactId, chunk);
@@ -223,8 +278,13 @@ async function handlePostRequest(req: Request, res: Response) {
       console.error(e.response?.status);
       console.error(e.response?.statusText);
       console.error(JSON.stringify(e.response?.data));
+    } else {
+      console.error(e);
     }
-    console.error(e);
+    await sendWhatsappMessage(
+      contactId,
+      "¡Ups! Algo no está bien 🤒. Por favor, contacta al soporte técnico para que puedan resolver la situación lo más pronto posible."
+    );
   }
   res.sendStatus(204);
 }
