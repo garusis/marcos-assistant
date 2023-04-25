@@ -4,31 +4,52 @@ import bodyParser from "body-parser";
 import { Datastore } from "@google-cloud/datastore";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import { environment } from "./environment";
+import { getAudioTranscription } from "./openai";
+import {
+  getMediaMetadata,
+  retrieveMedia,
+  sendWhatsappMessage,
+} from "./whatsapp";
+import { AxiosError } from "axios";
+import { PassThrough } from "stream";
 
 const tasksClient = new CloudTasksClient();
 
 const datastore = new Datastore();
 
-type Message = {
+type WSBaseMessage = {
   from: string;
   id: string;
   timestamp: string;
+};
+
+type WSTextMessage = {
   text: {
     body: string;
   };
-  type: string;
-};
+  type: "text";
+} & WSBaseMessage;
 
-type Contact = { profile: { name: string }; wa_id: string };
+type WSAudioMessage = {
+  audio: {
+    id: string;
+    mime_type: string;
+  };
+  type: "audio";
+} & WSBaseMessage;
 
-type Change = {
+type WSMessage = WSTextMessage | WSAudioMessage;
+
+type WSContact = { profile: { name: string }; wa_id: string };
+
+type WSChange = {
   value?: {
     metadata?: {
       display_phone_number: string;
       phone_number_id: string;
     };
-    contacts?: Array<Contact>;
-    messages?: Array<Message>;
+    contacts?: Array<WSContact>;
+    messages?: Array<WSMessage>;
   };
   field: string;
 };
@@ -37,7 +58,7 @@ type HookBody = {
   object?: string;
   entry?: Array<{
     id: string;
-    changes?: Array<Change>;
+    changes?: Array<WSChange>;
   }>;
 };
 
@@ -52,7 +73,7 @@ function handleAuthentication(req: Request, res: Response) {
   res.send(req.query["hub.challenge"]);
 }
 
-async function defineContactId(contactId: string, contacts: Array<Contact>) {
+async function defineContactId(contactId: string, contacts: Array<WSContact>) {
   const contactKey = datastore.key(["Contact", contactId]);
   const [existingContact] = await datastore.get(contactKey);
   if (existingContact) return contactKey;
@@ -71,7 +92,11 @@ async function defineContactId(contactId: string, contacts: Array<Contact>) {
   return contactKey;
 }
 
-async function appendToHistoryChat(message: Message, contacts: Array<Contact>) {
+async function appendToHistoryChat(
+  message: WSBaseMessage,
+  messageText: string,
+  contacts: Array<WSContact>
+) {
   const contactKey = await defineContactId(message.from, contacts);
 
   // Guarda el mensaje en Datastore
@@ -89,7 +114,7 @@ async function appendToHistoryChat(message: Message, contacts: Array<Contact>) {
       },
       {
         name: "text",
-        value: message.text.body,
+        value: messageText,
         excludeFromIndexes: true,
       },
       {
@@ -132,13 +157,52 @@ async function sendToQueue(contactId: string, messageId: string) {
   await tasksClient.createTask({ parent: queuePath, task });
 }
 
-async function processMessage(change: Change) {
+async function getMessageText(message: WSMessage) {
+  if (message.type === "text") return message.text.body;
+  if (message.type === "audio") {
+    const { stream } = await retrieveMedia(message.audio.id);
+    const response = await getAudioTranscription(stream);
+    const text = response.data.text;
+    await sendWhatsappMessage(
+      message.from,
+      `Esto es lo que entendí en tu mensaje:\n\n*${text}*\n\nPor favor, dame un momento mientras reflexiono sobre la respuesta adecuada.`
+    );
+    return text;
+  }
+  return null;
+}
+
+async function processMessage(change: WSChange) {
   const message = change.value?.messages?.[0];
   const contacts = change.value?.contacts || [];
   if (!message) return;
 
-  await appendToHistoryChat(message, contacts);
-  await sendToQueue(message.from, message.id);
+  try {
+    const messageText = await getMessageText(message);
+
+    if (!messageText) {
+      await sendWhatsappMessage(
+        message.from,
+        "Lo siento, no puedo entender este tipo de mensajes"
+      );
+      return;
+    }
+
+    await appendToHistoryChat(message, messageText, contacts);
+    await sendToQueue(message.from, message.id);
+  } catch (e) {
+    if (e instanceof AxiosError) {
+      console.error(e.response?.status);
+      console.error(e.response?.statusText);
+      console.error(JSON.stringify(e.response?.data));
+    } else {
+      console.error(e);
+    }
+    await sendWhatsappMessage(
+      message.from,
+      "¡Ups! Algo no está bien 🤒. Por favor, contacta al soporte técnico para que puedan resolver la situación lo más pronto posible."
+    );
+  }
 }
 
 async function handlePostRequest(req: Request, res: Response) {

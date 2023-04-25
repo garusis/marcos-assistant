@@ -5,7 +5,9 @@ import bodyParser from "body-parser";
 import * as console from "console";
 import { entity } from "@google-cloud/datastore/build/src/entity";
 import { encoding_for_model } from "@dqbd/tiktoken";
+import { sendWhatsappMessage } from "./whatsapp";
 import { environment } from "./environment";
+import { getCompletions } from "./openai";
 
 type Contact = {
   name: string;
@@ -17,22 +19,6 @@ type StoredMessage = {
   text: string;
   timestamp: number;
   actor: "user" | "assistant";
-};
-
-type OpenAIResponse = {
-  choices: Array<{
-    message: {
-      role: "assistant";
-      content: string;
-    };
-    finish_reason: "stop" | "length";
-    index: number;
-  }>;
-  usage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
 };
 
 const datastore = new Datastore();
@@ -52,14 +38,14 @@ async function retrieveLatestMessage(contactKey: entity.Key) {
 }
 
 function getTokensCount(message: string) {
-  const encoding = encoding_for_model(environment().OPENAI_MODEL);
+  const encoding = encoding_for_model(environment().OPENAI_CHAT_MODEL);
   const count = encoding.encode(message).length;
   encoding.free();
   return count + environment().OPENAI_MESSAGE_TOKENS_PADDING;
 }
 
 function truncateText(text: string, maxTokens: number) {
-  const encoding = encoding_for_model(environment().OPENAI_MODEL);
+  const encoding = encoding_for_model(environment().OPENAI_CHAT_MODEL);
   const tokens = encoding.encode(text);
 
   const tokensCount =
@@ -205,35 +191,6 @@ async function appendToHistoryChat(
   await datastore.save(messageEntity);
 }
 
-async function sendWhatsappMessage(contactId: string, text: string) {
-  const response = await axios.post<{
-    messages: [
-      {
-        id: string;
-      }
-    ];
-  }>(
-    `https://graph.facebook.com/v16.0/${
-      environment().WHATSAPP_PHONE_ID
-    }/messages`,
-    {
-      messaging_product: "whatsapp",
-      to: contactId,
-      type: "text",
-      text: {
-        preview_url: true,
-        body: text,
-      },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${environment().WHATSAPP_MESSAGING_TOKEN}`,
-      },
-    }
-  );
-  return response.data.messages[0].id;
-}
-
 async function handlePostRequest(req: Request, res: Response) {
   const { contactId, messageId } = req.body as {
     contactId: string;
@@ -249,20 +206,7 @@ async function handlePostRequest(req: Request, res: Response) {
 
     const messages = await getMessagesHistory(contactKey, existingContact);
 
-    const response = await axios.post<OpenAIResponse>(
-      `https://api.openai.com/v1/chat/completions`,
-      {
-        model: environment().OPENAI_MODEL,
-        max_tokens: environment().OPENAI_MAX_RESPONSE_TOKENS,
-        temperature: 0.8,
-        messages,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${environment().OPENAI_API_KEY}`,
-        },
-      }
-    );
+    const response = await getCompletions(messages);
 
     console.log(response.data.usage);
 
