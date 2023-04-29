@@ -12,6 +12,11 @@ const trimmedStringSchema = z
   .min(1)
   .transform((v) => v.trim());
 
+const stringArraySchema = z.preprocess(
+  (val) => String(val).split(","),
+  z.array(trimmedStringSchema)
+);
+
 const envSchema = z.object({
   WEBHOOK_VERIFY_TOKEN: trimmedStringSchema,
   WEBHOOK_QUEUE_PROCESSOR_URL: trimmedStringSchema,
@@ -29,6 +34,8 @@ const envSchema = z.object({
   OPENAI_MESSAGE_TOKENS_PADDING: stringNumberSchema,
   OPENAI_INITIAL_PROMPT: trimmedStringSchema,
   OPENAI_API_KEY: trimmedStringSchema,
+  CONTACTS_WHITE_LIST: stringArraySchema,
+  MODERATOR_PHONE_LIST: stringArraySchema,
 });
 
 /**

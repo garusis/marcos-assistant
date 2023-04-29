@@ -5,9 +5,10 @@ import bodyParser from "body-parser";
 import * as console from "console";
 import { entity } from "@google-cloud/datastore/build/src/entity";
 import { encoding_for_model } from "@dqbd/tiktoken";
-import { sendWhatsappMessage } from "./whatsapp";
-import { environment } from "./environment";
-import { getCompletions } from "./openai";
+import { sendWhatsappMessage } from "@whatsapp";
+import { environment } from "@environment";
+import { getCompletions } from "@openai";
+import { sendPoliteMessage } from "@conversation";
 
 type Contact = {
   name: string;
@@ -204,8 +205,9 @@ async function handlePostRequest(req: Request, res: Response) {
     const latestMessage = await retrieveLatestMessage(contactKey);
     if (latestMessage.messageId !== messageId) return;
 
-    const messages = await getMessagesHistory(contactKey, existingContact);
+    const politeMessageId = sendPoliteMessage(contactId);
 
+    const messages = await getMessagesHistory(contactKey, existingContact);
     const response = await getCompletions(messages);
 
     console.log(response.data.usage);
@@ -213,6 +215,8 @@ async function handlePostRequest(req: Request, res: Response) {
     const chunks = splitStringIntoChunks(
       response.data.choices?.[0]?.message?.content as string
     );
+
+    clearTimeout(politeMessageId);
     for await (const chunk of chunks) {
       const messageId = await sendWhatsappMessage(contactId, chunk);
       await appendToHistoryChat(chunk, messageId, contactKey);

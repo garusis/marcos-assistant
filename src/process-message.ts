@@ -3,16 +3,15 @@ import express from "express";
 import bodyParser from "body-parser";
 import { Datastore } from "@google-cloud/datastore";
 import { CloudTasksClient } from "@google-cloud/tasks";
-import { environment } from "./environment";
-import { getAudioTranscription } from "./openai";
+import { environment } from "@environment";
+import { getAudioTranscription } from "@openai";
 import {
-  getMediaMetadata,
   markMessageAsRead,
   retrieveMedia,
   sendWhatsappMessage,
-} from "./whatsapp";
+} from "@whatsapp";
 import { AxiosError } from "axios";
-import { PassThrough } from "stream";
+import { notifyInvalidContact } from "@conversation";
 
 const tasksClient = new CloudTasksClient();
 
@@ -177,6 +176,10 @@ async function processMessage(change: WSChange) {
   const message = change.value?.messages?.[0];
   const contacts = change.value?.contacts || [];
   if (!message) return;
+  if (!environment().CONTACTS_WHITE_LIST.includes(message.from)) {
+    notifyInvalidContact(message.from);
+    return;
+  }
 
   try {
     markMessageAsRead(message.id);

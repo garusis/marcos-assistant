@@ -2,8 +2,7 @@ import axios from "axios";
 import { Readable, PassThrough } from "stream";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
-import { environment } from "./environment";
-import * as console from "console";
+import { environment } from "@environment";
 
 const GRAPH_API_URL = "https://graph.facebook.com/v16.0";
 
