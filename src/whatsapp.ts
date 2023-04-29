@@ -3,6 +3,7 @@ import { Readable, PassThrough } from "stream";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
 import { environment } from "./environment";
+import * as console from "console";
 
 const GRAPH_API_URL = "https://graph.facebook.com/v16.0";
 
@@ -33,6 +34,29 @@ async function sendWhatsappMessage(contactId: string, text: string) {
     }
   );
   return response.data.messages[0].id;
+}
+
+function markMessageAsRead(messageId: string) {
+  setTimeout(() => {
+    axios
+      .post(
+        `${GRAPH_API_URL}/${environment().WHATSAPP_PHONE_ID}/messages`,
+        {
+          messaging_product: "whatsapp",
+          status: "read",
+          message_id: messageId,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${environment().WHATSAPP_MESSAGING_TOKEN}`,
+          },
+        }
+      )
+      .catch((err) => {
+        console.error("Error marking message as read", { messageId });
+        console.error(err);
+      });
+  }, 4000);
 }
 
 async function getMediaMetadata(mediaId: string) {
@@ -71,4 +95,9 @@ async function retrieveMedia(mediaId: string) {
   return { stream: passThroughStream, meta };
 }
 
-export { sendWhatsappMessage, getMediaMetadata, retrieveMedia };
+export {
+  markMessageAsRead,
+  sendWhatsappMessage,
+  getMediaMetadata,
+  retrieveMedia,
+};

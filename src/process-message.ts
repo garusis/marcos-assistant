@@ -7,6 +7,7 @@ import { environment } from "./environment";
 import { getAudioTranscription } from "./openai";
 import {
   getMediaMetadata,
+  markMessageAsRead,
   retrieveMedia,
   sendWhatsappMessage,
 } from "./whatsapp";
@@ -147,7 +148,7 @@ async function sendToQueue(contactId: string, messageId: string) {
         "base64"
       ),
       scheduleTime: {
-        seconds: Date.now() / 1000 + 60,
+        seconds: Date.now() / 1000 + 10,
       },
       oidcToken: {
         serviceAccountEmail: environment().GC_SERVICE_ACCOUNT_EMAIL,
@@ -178,6 +179,7 @@ async function processMessage(change: WSChange) {
   if (!message) return;
 
   try {
+    markMessageAsRead(message.id);
     const messageText = await getMessageText(message);
 
     if (!messageText) {
