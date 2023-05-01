@@ -53,13 +53,13 @@ function truncateText(text: string, maxTokens: number) {
     tokens.length + environment().OPENAI_MESSAGE_TOKENS_PADDING;
 
   let currentTokens = tokens.slice(maxTokens - tokensCount);
+  console.log({ lastMessageTokens: currentTokens.length });
   let currentText = encoding.decode(currentTokens);
   encoding.free();
   return new TextDecoder().decode(currentText);
 }
 
 function filterMessages(messages: Array<StoredMessage>) {
-  console.log(JSON.stringify(messages));
   const limitTokens =
     environment().OPENAI_MAX_TOKENS -
     environment().OPENAI_MAX_RESPONSE_TOKENS -
@@ -85,6 +85,7 @@ function filterMessages(messages: Array<StoredMessage>) {
     lastMessage.text,
     limitTokens - consumedTokens
   );
+  console.log({ consumedTokens, messageLength: indexOutOfBound });
   return [...messages.slice(0, indexOutOfBound), lastMessage];
 }
 
