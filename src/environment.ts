@@ -23,6 +23,7 @@ const envSchema = z.object({
   WHATSAPP_MESSAGING_TOKEN: trimmedStringSchema,
   WHATSAPP_PHONE_ID: trimmedStringSchema,
   WHATSAPP_MESSAGE_LIMIT: stringNumberSchema,
+  WHATSAPP_ACCOUNT_ID: trimmedStringSchema,
   GC_PROJECT_ID: trimmedStringSchema,
   GC_TASK_LOCATION: trimmedStringSchema,
   GC_TASK_CHAT_QUEUE: trimmedStringSchema,

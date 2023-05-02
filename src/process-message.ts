@@ -212,7 +212,14 @@ async function processMessage(change: WSChange) {
 
 async function handlePostRequest(req: Request, res: Response) {
   const body = req.body as HookBody;
-  const changes = body.entry?.[0].changes || [];
+  const entry = body.entry?.[0];
+
+  // If the message is not from the account, ignore it
+  if (entry?.id !== environment().WHATSAPP_ACCOUNT_ID) {
+    return res.sendStatus(200);
+  }
+
+  const changes = entry?.changes || [];
   const changesWithMessages = changes.filter(
     (change) => !!change.value?.messages
   );
