@@ -28,7 +28,7 @@ const envSchema = z.object({
   GC_TASK_LOCATION: trimmedStringSchema,
   GC_TASK_CHAT_QUEUE: trimmedStringSchema,
   GC_SERVICE_ACCOUNT_EMAIL: trimmedStringSchema,
-  OPENAI_CHAT_MODEL: z.literal("gpt-3.5-turbo"),
+  OPENAI_CHAT_MODEL: z.enum(["gpt-3.5-turbo", "gpt-4"]),
   OPENAI_TRANSCRIPTION_MODEL: z.literal("whisper-1"),
   OPENAI_MAX_TOKENS: stringNumberSchema,
   OPENAI_MAX_RESPONSE_TOKENS: stringNumberSchema,
