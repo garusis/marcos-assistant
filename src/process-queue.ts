@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import { Datastore } from "@google-cloud/datastore";
-import axios, { AxiosError } from "axios";
+import { AxiosError } from "axios";
 import bodyParser from "body-parser";
 import * as console from "console";
 import { entity } from "@google-cloud/datastore/build/src/entity";
@@ -39,14 +39,14 @@ async function retrieveLatestMessage(contactKey: entity.Key) {
 }
 
 function getTokensCount(message: string) {
-  const encoding = encoding_for_model(environment().OPENAI_CHAT_MODEL);
+  const encoding = encoding_for_model(environment().TIKTOKEN_CHAT_MODEL);
   const count = encoding.encode(message).length;
   encoding.free();
   return count + environment().OPENAI_MESSAGE_TOKENS_PADDING;
 }
 
 function truncateText(text: string, maxTokens: number) {
-  const encoding = encoding_for_model(environment().OPENAI_CHAT_MODEL);
+  const encoding = encoding_for_model(environment().TIKTOKEN_CHAT_MODEL);
   const tokens = encoding.encode(text);
 
   const tokensCount =
