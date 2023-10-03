@@ -4,9 +4,6 @@
   "description": "",
   "scripts": {
     "dev:build": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && cp package.json package-lock.json dist/",
-    "deploy-message": "gcloud functions deploy marcos-assistant --source dist --runtime nodejs18 --trigger-http --allow-unauthenticated --entry-point message --project marcos-assistant-383518 --env-vars-file=.env.yaml",
-    "deploy-queue": "gcloud functions deploy process-queue --source dist --runtime nodejs18 --trigger-http --allow-unauthenticated --entry-point queue --project marcos-assistant-383518 --env-vars-file=.env.yaml",
-    "deploy": "npm run dev:build && npm run deploy-message && npm run deploy-queue",
     "dev": "npm run dev:build && node dist/index.js"
   },
   "keywords": [],
