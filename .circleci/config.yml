@@ -53,7 +53,7 @@ jobs:
           name: Deploy functions for main branch
           command: |
             gcloud functions deploy marcos-assistant --source dist --runtime nodejs18 --trigger-http --allow-unauthenticated --entry-point message --project marcos-assistant-383518
-            gcloud functions deploy process-queue --source dist --runtime nodejs18 --trigger-http --allow-unauthenticated --entry-point queue --project marcos-assistant-383518
+            gcloud functions deploy process-queue --timeout 540 --source dist --runtime nodejs18 --trigger-http --allow-unauthenticated --entry-point queue --project marcos-assistant-383518
 
   deploy-dev:
     executor: gcloud-executor
@@ -69,7 +69,7 @@ jobs:
           name: Deploy functions for development branch
           command: |
             gcloud functions deploy marcos-assistant-dev --source dist --runtime nodejs18 --trigger-http --allow-unauthenticated --entry-point message --project marcos-assistant-383518
-            gcloud functions deploy process-queue-dev --source dist --runtime nodejs18 --trigger-http --allow-unauthenticated --entry-point queue --project marcos-assistant-383518
+            gcloud functions deploy process-queue-dev --timeout 540 --source dist --runtime nodejs18 --trigger-http --allow-unauthenticated --entry-point queue --project marcos-assistant-383518
 
 workflows:
   version: 2
