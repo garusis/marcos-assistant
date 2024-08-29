@@ -4,7 +4,7 @@ import { AxiosError } from "axios";
 import bodyParser from "body-parser";
 import * as console from "console";
 import { entity } from "@google-cloud/datastore/build/src/entity";
-import { encoding_for_model } from "@dqbd/tiktoken";
+import { encoding_for_model, TiktokenModel } from "@dqbd/tiktoken";
 import { sendWhatsappMessage } from "@whatsapp";
 import { environment } from "@environment";
 import { getCompletions } from "@openai";
@@ -39,14 +39,18 @@ async function retrieveLatestMessage(contactKey: entity.Key) {
 }
 
 function getTokensCount(message: string) {
-  const encoding = encoding_for_model(environment().TIKTOKEN_CHAT_MODEL);
+  const encoding = encoding_for_model(
+    environment().TIKTOKEN_CHAT_MODEL as TiktokenModel
+  );
   const count = encoding.encode(message).length;
   encoding.free();
   return count + environment().OPENAI_MESSAGE_TOKENS_PADDING;
 }
 
 function truncateText(text: string, maxTokens: number) {
-  const encoding = encoding_for_model(environment().TIKTOKEN_CHAT_MODEL);
+  const encoding = encoding_for_model(
+    environment().TIKTOKEN_CHAT_MODEL as TiktokenModel
+  );
   const tokens = encoding.encode(text);
 
   const tokensCount =
